@@ -172,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Temporal files/ directories
+*.tmp
+**/cache
+**/__pycache__
+*.egg-info
