@@ -1,0 +1,19 @@
+payload_param:
+  cloud_cover : 0.02
+  item_type : "PSScene"
+  block_date : {
+    start_date : "2019-01-01",
+    end_date : "2023-12-31",
+    use_block_dates : False
+  }
+  selected_days : all
+  product_bundle_type : "ortho_analytic_4b_sr"
+  quality_type : "standard"
+  overlap : 80
+  order_type : "partial"
+
+data_param:
+  api_csv : "planet_api_keys.csv"
+  geojson_dir : "application_geojson"
+  saving_dir : "application_images"
+  
