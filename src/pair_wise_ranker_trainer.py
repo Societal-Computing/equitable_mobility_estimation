@@ -1,26 +1,18 @@
 import argparse
-import os
-import sys
-
-from pathlib import Path
 from tqdm import tqdm
 
 import torch.nn as nn
 import torch.optim as optim
 import torch
-import copy
 import pandas as pd
 import numpy as np
 import rasterio
 from torch.utils.data import Dataset, DataLoader
-import cProfile
-import pstats
 
-from utils import *
-from models import get_model, optimize_temperature, evaluate_with_temperature_scaling
+import utils as ut
+from models import get_model
 from base_trainer import EarlyStopping, BaseTrainer
-from torch.profiler import tensorboard_trace_handler, profile
-from sklearn.model_selection import train_test_split
+
 import random
 from typing import Dict
 from logger import logger
@@ -79,13 +71,9 @@ class PlanetRankerDataset(Dataset):
 
         label = torch.tensor(label).long()
 
-        if self.preprocess_type == 'derivatives':
-            anchor_img_data = convert_to_image_derivatives(anchor_img_data)
-            anchor_pair_img_data = convert_to_image_derivatives(anchor_pair_img_data)
-        elif self.preprocess_type == 'rgb':
-            anchor_img_data = convert_to_rgb(anchor_img_data)
-            anchor_pair_img_data = convert_to_rgb(anchor_pair_img_data)
-            #im = self.stacking_rgb_images(img_data) #testing this feature against convert_to_rgb, doesn't work input supports unit8 only
+        if self.preprocess_type == 'rgb':
+            anchor_img_data = ut.convert_to_rgb(anchor_img_data)
+            anchor_pair_img_data = ut.convert_to_rgb(anchor_pair_img_data)
         else:
             raise ValueError(
                 "Invalid preprocess type, choose from ['derivatives', 'rgb']")
@@ -101,7 +89,7 @@ class PlanetRankerDataset(Dataset):
 
 class PairWiseTrainer(BaseTrainer):
     def __init__(self, config_path: str, early_stopping: bool) -> None:
-        config = load_config(config_path)
+        config = ut.load_config(config_path)
         self.config = config
         self.model_config = config['model_config']
         self.train_config = config['train_config']
@@ -147,53 +135,21 @@ class PairWiseTrainer(BaseTrainer):
         std /= nb_samples
 
         return mean, std
-
-    def get_top_bottom_25_percent(self, test_data):
-        # get top 25% and bottom 25% of test data based on parking lot name
-        unique_parking_lots = test_data['parking_lot_name'].unique()
-        top_25_percent = []
-        bottom_25_percent = []
-        for parking_lot in unique_parking_lots:
-            sel_parking_lot = test_data[test_data['parking_lot_name'] == parking_lot].copy()
-            sel_parking_lot = sel_parking_lot.sort_values(by='probs', ascending=False).reset_index(drop=True)
-            top_25 = sel_parking_lot.loc[:int(0.25 * sel_parking_lot.shape[0])]
-            bottom_25 = sel_parking_lot.loc[int(0.75 * sel_parking_lot.shape[0]):]
-            top_25.loc[:, 'label'] = 1
-            bottom_25.loc[:, 'label'] = 0
-            top_25_percent.append(top_25)
-            bottom_25_percent.append(bottom_25)
-        top_25_percent = pd.concat(top_25_percent)
-        bottom_25_percent = pd.concat(bottom_25_percent)
-        return top_25_percent, bottom_25_percent
-
-    def plot_occupancy_predictions(self, bootstrapped_predictions_df, city, plot_save_path, data_type='filtering'):
-        bootstrapped_pred_sunday = bootstrapped_predictions_df[bootstrapped_predictions_df['day'] == 'sunday']
-        bootstrapped_pred_saturday = bootstrapped_predictions_df[bootstrapped_predictions_df['day'] == 'saturday']
-
-        plt.figure(figsize=(30, 20))
-        plt.bar(bootstrapped_pred_sunday['parking_lot_name'], bootstrapped_pred_sunday['probs'], color='blue',
-                alpha=0.4, label='Sunday Occupancy')
-        plt.bar(bootstrapped_pred_saturday['parking_lot_name'], bootstrapped_pred_saturday['probs'], color='red',
-                alpha=0.4, label='Saturday Occupancy')
-        plt.plot(bootstrapped_pred_sunday['parking_lot_name'], bootstrapped_pred_sunday['probs'], color='blue',
-                 alpha=0.7, linestyle='-', marker='o')
-        plt.plot(bootstrapped_pred_saturday['parking_lot_name'], bootstrapped_pred_saturday['probs'], color='red',
-                 alpha=0.7, linestyle='-', marker='o')
-
-        plt.xlabel("Parking Lot Name", fontsize=12)
-        plt.ylabel("Predicted Probability (Occupancy)", fontsize=12)
-        plt.title(f"{city}: Highres2Planet Occupancy Prediction", fontsize=14)
-        plt.xticks(rotation=45)
-        plt.legend()
-        plt.grid(axis='y', linestyle='--', alpha=0.7)
-        plt.tight_layout()
-        plt.savefig(f"{plot_save_path}/{city}_{data_type}_occupancy_plot.png")
-        plt.close()
     
     @staticmethod
     def get_pair_wise_dataloader(train_data_path: str ,val_data_path: str,train_augmentations: Dict,test_augmentations: Dict, preprocess_type: str, batch_size: int):
-        train_transform = get_transforms(train_augmentations)
-        test_transform = get_transforms(test_augmentations)
+        '''
+        Create the dataloader for the training and validation data.
+        train_data_path :param train_data_path: The path to the training data
+        val_data_path :param val_data_path: The path to the validation data
+        train_augmentations :param train_augmentations: The augmentations to apply to the training data
+        test_augmentations :param test_augmentations: The augmentations to apply to the validation data
+        preprocess_type :param preprocess_type: The type of preprocessing to apply to the data
+        batch_size :param batch_size: The batch size to use for the dataloaders
+        '''
+
+        train_transform = ut.get_transforms(train_augmentations)
+        test_transform = ut.get_transforms(test_augmentations)
 
         if isinstance(train_data_path, str):
             train_df = pd.read_csv(train_data_path)
@@ -210,26 +166,32 @@ class PairWiseTrainer(BaseTrainer):
         else:
             raise ValueError("val_data_path should be either a string or a dataframe")
 
-        # all_data = pd.concat([train_df,test_df])
-        # unique_lots = all_data['parking_lot_name'].unique()
-        # train_lots, test_lots = train_test_split(unique_lots, test_size=0.2, random_state=86)
-        #
-        # train_df = all_data[all_data['parking_lot_name'].isin(train_lots)]
-        # test_df = all_data[all_data['parking_lot_name'].isin(test_lots)]
-
         #test with a few samples
-        train_df = train_df.sample(5000) # 382692 -> 12hr approx
-        test_df = test_df.sample(500, random_state=42)
+        train_df = train_df.sample(5000) # load a sample of 5000
+        test_df = test_df.sample(500, random_state=42) #load a sample of 500
 
         train_dataset = PlanetRankerDataset(train_df, transform=train_transform, preprocess_type=preprocess_type)
         val_dataset = PlanetRankerDataset(test_df, transform=test_transform, preprocess_type=preprocess_type)
 
-        print(f"Train dataset length: {len(train_dataset)}, Val dataset length: {len(val_dataset)}")
+        logger.info(f"Train dataset length: {len(train_dataset)}, Val dataset length: {len(val_dataset)}")
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
         test_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
         return train_loader, test_loader, test_df
+    
     def epoch_run(self, model, criterion, optimizer, train_loader, test_loader, scheduler, num_epochs,
                   save_path):
+        '''
+        Run the training and validation loop for the model.
+        model :param model: The model to train
+        criterion :param criterion: The loss function to use
+        optimizer :param optimizer: The optimizer to use
+        train_loader :param train_loader: The training data loader
+        test_loader :param test_loader: The validation data loader
+        scheduler :param scheduler: The learning rate scheduler
+        num_epochs :param num_epochs: The number of epochs to train for
+        save_path :param save_path: The path to save the model
+        '''
+
         epoch_train_loss = []
         epoch_test_loss = []
         epoch_train_true = []
@@ -334,7 +296,7 @@ class PairWiseTrainer(BaseTrainer):
     def train(self):
         model_config = self.model_config
         model = get_model(model_config)
-        experiment_dir = generate_experiment_name(f"patch_{model_config['model_name']}")
+        experiment_dir = ut.generate_experiment_name(f"patch_{model_config['model_name']}")
 
         model = model.to(device)
 
@@ -367,60 +329,16 @@ class PairWiseTrainer(BaseTrainer):
         epoch_test_pred_np = np.mean(epoch_test_pred_np, axis=0)
         test_df['pred'] = epoch_test_pred_np
         test_df.to_csv(f"{experiment_dir}/test_predictions.csv", index=False)
-        plots(final_epoch, epoch_train_loss, epoch_test_loss, epoch_train_true,
+        ut.plots(final_epoch, epoch_train_loss, epoch_test_loss, epoch_train_true,
               epoch_train_pred, test_df['label'], epoch_test_pred, experiment_dir, 'classification')
 
-        if self.post_temp_scaling:
-            temperature_scaling, optimized_model = optimize_temperature(final_model, test_loader, criterion,
-                                                                        self.model_config['model_name'])
-            logger.info(f"Temperature scaling factor: {temperature_scaling}")
-            update_config = copy.deepcopy(self.config)
-            update_config['model_config']['temperature_scaling'] = temperature_scaling
-            save_inference_config(update_config, experiment_dir, train_type='single')
-
-            torch.save(final_model.state_dict(), experiment_dir.joinpath(f"{self.model_config['model_name']}.pt"))
-            logger.info(f"Model saved after temperature scaling {experiment_dir}")
-
-            evaluate_with_temperature_scaling(final_model, optimized_model, test_loader, temperature_scaling,
-                                              self.model_config['model_name'])
-
-        else:
-            logger.info(f"Model saved with no temp scaling at {experiment_dir}")
-            save_inference_config(self.config, experiment_dir, train_type='single')
+        logger.info(f"Model saved with no temp scaling at {experiment_dir}")
+        ut.save_inference_config(self.config, experiment_dir, train_type='single')
 
         return experiment_dir
 
-    def load_model(self, model_config, model_weight):
-        model = get_model(model_config)
-        logger.info(f"Loading model from {model_weight}")
-        model.load_state_dict(torch.load(model_weight))
-        return model
-
-    @staticmethod
-    def plot_bootstrap_errorbars(bootstrapped_predictions, parking_lots, city, plot_save_path, data_type='filtering'):
-        print(bootstrapped_predictions.shape)
-        city = "test"
-        bootstrapped_predictions = bootstrapped_predictions[:, :, 1]
-        for i in range(0, bootstrapped_predictions.shape[1], 50):
-            sample = bootstrapped_predictions[:, i:i + 50]
-            plt.figure(figsize=(30, 20))
-            x_axis = parking_lots[i:i + 50]
-            plt.boxplot(sample, showfliers=True)
-            plt.xlabel("Test Image Indicies", fontsize=12)
-            plt.ylabel("Predicted Probability (Occupancy)", fontsize=12)
-            plt.title(f"{city}: Prediction Distribution with Uncertainty Bounds", fontsize=14)
-            plt.xticks(ticks=range(1, len(x_axis) + 1), labels=x_axis, rotation=75, ha='right', fontsize=10)
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
-            plt.tight_layout()
-            plt.savefig(f"{plot_save_path}/{city}_{data_type}_{i}_CI_plot.png")
-        plt.close()
-
 
 if __name__ == "__main__":
-    #writer = SummaryWriter()
-    #with profile(on_trace_ready=tensorboard_trace_handler("logs")) as prof:
-    pr = cProfile.Profile()
-    pr.enable()
     parser = argparse.ArgumentParser(
         usage="python src/pair_wise_ranker_trainer.py --config_path configs/pair_wise_config.yaml",
         description="Training file")
@@ -435,12 +353,3 @@ if __name__ == "__main__":
 
     trainer = PairWiseTrainer(config_path, early_stopping)
     experiment_dir = trainer.train()
-
-    pr.disable()
-    # pr.dump_stats("profile_results_no_mp_no_preloading.prof")
-
-    with open(f"{experiment_dir}/profile_results.txt", "w") as f:
-        ps = pstats.Stats(pr, stream=f).sort_stats('cumulative')
-        ps.print_stats()
-
-    #writer.close()
