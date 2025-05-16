@@ -269,7 +269,6 @@ class DataPreProcessing:
         if self.split_data:
             logger.info("Splitting data into train, test and validation")
             self.split_data_train_test_val(all_filtered_images_df, save_path)
-
     
 
 if __name__ == '__main__':
