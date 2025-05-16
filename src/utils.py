@@ -3,7 +3,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-import cv2
 import numpy as np
 import pandas as pd
 import rioxarray
@@ -12,7 +11,6 @@ import torch
 import yaml
 import json
 import geopandas as gpd
-from PIL import Image
 from matplotlib import pyplot as plt
 from skimage.util import view_as_blocks
 from sklearn.metrics import auc, confusion_matrix, roc_auc_score, roc_curve
@@ -68,6 +66,14 @@ def get_transforms(augmentation):
     return transforms.Compose(x)
 
 
+def check_size_most(img_path):
+    ''' Finding the most occuring size of the image in the dataset'''
+    img_size = []
+    for i in img_path:
+        img = rioxarray.open_rasterio(i)
+        img_size.append(img.shape)
+    return Counter(img_size).most_common(1).pop()[0]
+
 def save_inference_config(config, save_path, train_type):
     ''' save inference config '''
     if train_type == 'single':
@@ -96,16 +102,6 @@ def save_inference_config(config, save_path, train_type):
         yaml.dump(config, f, indent=4, sort_keys=False)
 
     logger.info(f"model info saved to {inference_config.as_posix()}")
-
-
-def check_size_most(img_path):
-    ''' Finding the most occuring size of the image in the dataset'''
-    img_size = []
-    for i in img_path:
-        img = rioxarray.open_rasterio(i)
-        img_size.append(img.shape)
-    return Counter(img_size).most_common(1).pop()[0]
-
 
 def clean_data(image_list: List[str]):
     '''This function will clean the data by removing the images with less
@@ -187,53 +183,6 @@ def patchify(image_array, patch_size):
     patches = patches.reshape(-1, patch_size, patch_size, image_array.shape[2])
     return patches
 
-# 8B image processing functions
-# def normalise_band(band):
-#     band = (band - band.min()) / ((band.max() - band.min()) + 1e-8)
-#     return band * 255
-
-
-# def brighten(band):
-#     alpha = 0.13
-#     beta = 0
-#     return np.clip(alpha * band + beta, 0, 255)
-
-
-# def gammacorr(band):
-#     gamma = 2
-#     return np.power(band, 1 / gamma)
-
-
-# def convert_to_rgb_mixin(image):
-#     if image.shape[0] == 8:
-#         red = image[5, :, :]
-#         green = image[3, :, :]
-#         blue = image[1, :, :]
-#         nir = image[7, :, :]
-#     elif image.shape[0] == 4:
-#         red = image[2, :, :]
-#         green = image[1, :, :]
-#         blue = image[0, :, :]
-#         nir = image[3, :, :]
-
-#     red = brighten(red)
-#     green = brighten(green)
-#     blue = brighten(blue)
-#     nir = brighten(nir)
-
-#     red = normalise_band(red)
-#     green = normalise_band(green)
-#     blue = normalise_band(blue)
-#     nir = normalise_band(nir)
-
-#     return red, green, blue, nir
-
-
-# def convert_to_rgb(image):
-#     red, green, blue, _ = convert_to_rgb_mixin(image)
-#     rgb = np.dstack((red, green, blue))
-#     return rgb.astype(np.uint8)
-
 
 def normalize_band(band, global_min, global_max):
     """Normalize a band using global min and max values."""
@@ -266,11 +215,6 @@ def convert_to_rgb(image, dtype=np.uint8):
     else:
         raise ValueError("Unsupported number of bands. Only 4-band or 8-band images are supported.")
 
-    # Apply gamma correction
-    # red = apply_gamma_correction(red)
-    # green = apply_gamma_correction(green)
-    # blue = apply_gamma_correction(blue)
-    # Normalize each band using the global min and max
     global_min = np.min([red.min(), green.min(), blue.min()])
     global_max = np.max([red.max(), green.max(), blue.max()])
     
@@ -285,97 +229,6 @@ def convert_to_rgb(image, dtype=np.uint8):
     # Combine into an RGB image
     rgb = np.dstack((red, green, blue))
     return rgb
-
-
-def convert_to_rgbn(image):
-    red, green, blue, nir = convert_to_rgb_mixin(image)
-    rgbn = np.dstack((red, green, blue, nir))
-    return rgbn.astype(np.uint8)
-
-
-def convert_to_image_derivatives(image):
-    for i in range(image.shape[0]):
-        image[i, :, :] = get_gradient_magnitude(image[i, :, :])
-
-    if image.shape[0] > 3:
-        image = torch.Tensor(image)
-    else:
-        image = image.astype(np.uint8)
-
-    return image
-
-
-def pan_sharpen(rgb_image, gray_image):
-    new_red = rgb_image[:, :, 0] / ((rgb_image[:, :, 0] + rgb_image[:, :, 1] + rgb_image[:, :, 2]) * gray_image)
-    new_green = rgb_image[:, :, 1] / ((rgb_image[:, :, 0] + rgb_image[:, :, 1] + rgb_image[:, :, 2]) * gray_image)
-    new_blue = rgb_image[:, :, 2] / ((rgb_image[:, :, 0] + rgb_image[:, :, 1] + rgb_image[:, :, 2]) * gray_image)
-    new_rgb_image = np.stack([new_red, new_green, new_blue], axis=2)
-    return new_rgb_image
-
-
-def create_density_map_luminance(rgb):
-    r = rgb[:, :, 0]
-    g = rgb[:, :, 1]
-    b = rgb[:, :, 2]
-    density_map = 0.2989 * r + 0.5870 * g + 0.1140 * b
-    return density_map
-
-
-def compute_fourier_transform_cv2(channel):
-    dft = cv2.dft(np.float32(channel), flags=cv2.DFT_COMPLEX_OUTPUT)
-    dft_shift = np.fft.fftshift(dft)
-    magnitude_spectrum = cv2.magnitude(dft_shift[:, :, 0], dft_shift[:, :, 1])
-    magnitude_spectrum = np.log(magnitude_spectrum + 1)
-    return magnitude_spectrum
-
-
-def get_gradient_magnitude(image):
-    gradient_x = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
-    gradient_x = np.abs(gradient_x)
-
-    gradient_y = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3)
-    gradient_y = np.abs(gradient_y)
-
-    gradient_magnitude = np.sqrt(gradient_x ** 2 + gradient_y ** 2)
-
-    gradient_magnitude_normalized = cv2.normalize(gradient_magnitude, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-
-    return gradient_magnitude_normalized
-
-
-def extract_descriptors(batch_data):
-    logger.info("Extracting SIFT descriptors...")
-    output_descriptors = torch.zeros((batch_data.shape[0], 128), dtype=torch.float32)
-
-    for i in range(batch_data.shape[0]):
-        data = batch_data[i].cpu().numpy().astype(np.uint8)
-
-        if data.shape[0] > 3:
-            img = convert_to_rgb(data)
-        elif data.shape[0] == 3:
-            img = data.transpose(1, 2, 0)
-        else:
-            img = data.astype(np.uint8)
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        sift = cv2.SIFT_create()
-        keypoints, descriptors = sift.detectAndCompute(gray, None)
-        #print(f"keypoints: {len(keypoints)}")
-
-        if descriptors is not None:
-            if descriptors.shape[0] > 128:
-                descriptors = descriptors[:128]
-            elif descriptors.shape[0] < 128:
-                padding = np.zeros((128 - descriptors.shape[0], descriptors.shape[1]))
-                descriptors = np.vstack((descriptors, padding))
-
-            output_descriptors[i] = torch.from_numpy(descriptors).reshape(-1)[:128]
-
-    logger.info(f"SIFT descriptors extracted with size {output_descriptors.shape}...")
-    output_descriptors = output_descriptors.to(device)
-    return output_descriptors
-
 
 def plot_loss(num_epochs, epoch_train_loss, epoch_val_loss, experiment_dir):
     plt.plot(range(num_epochs), epoch_train_loss, label='train loss')

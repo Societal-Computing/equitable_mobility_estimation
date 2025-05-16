@@ -69,59 +69,9 @@ class BaseTrainer:
             config = config_path
         else:
             raise ValueError("config_path should be either a string or a dictionary")
-        return config
+        return config    
 
-
-    def check_remove(row):
-        '''
-        We expect Sunday image to have value close to mean of reference image
-        and Saturday image to have value greater than mean of reference image
-
-        return:
-        1 if image is to be removed else 0
-        '''
-        sun_threshold = 0.03
-        sat_threshold = 0.09
-        day = row['day']
-        if day.lower() == 'sunday':
-            return 1 if abs(row['image_seb_grad_mean'] - row['ref_image_seb_grad_mean']) > sun_threshold else 0
-        elif day.lower() == 'saturday':
-            return 1 if abs(row['image_seb_grad_mean'] - row['ref_image_seb_grad_mean']) < sat_threshold else 0
     
-
-    def get_dataloader(self, train_data_path: str, val_data_path: str, train_augementations: Dict, val_augmentations: Dict, preprocess_type: str, batch_size: int, dimensionless: bool = False):
-        train_transform = get_transforms(train_augementations)
-        val_transform = get_transforms(val_augmentations)
-
-        if isinstance(train_data_path, str):
-            train_df = pd.read_csv(train_data_path)
-        elif isinstance(train_data_path, pd.DataFrame):
-            train_df = train_data_path.copy()
-        else:
-            raise ValueError("train_data_path should be either a string or a dataframe")
-
-        if isinstance(val_data_path, str):
-            val_df = pd.read_csv(val_data_path)
-        elif isinstance(val_data_path, pd.DataFrame):
-            val_df = val_data_path.copy()
-        else:
-            raise ValueError("val_data_path should be either a string or a dataframe")
-
-        train_dataset = PlanetPatchDataset(train_df, train_transform, preprocess_type)
-        test_dataset = PlanetPatchDataset(val_df, val_transform, preprocess_type)
-
-        logger.info(f"Train dataset size: {len(train_dataset)}")
-        logger.info(f"Test dataset size: {len(test_dataset)}")
-
-        if dimensionless:
-            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, collate_fn=self.pad_collate_fn)
-            test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, collate_fn=self.pad_collate_fn)
-        else:
-            train_loader = DataLoader(train_dataset, batch_size= batch_size, shuffle=True, num_workers=0)
-            test_loader = DataLoader(test_dataset, batch_size= batch_size, shuffle=False, num_workers=0)
-
-        return train_loader, test_loader
-
     def pad_collate_fn(self, batch):
         images, labels = zip(*batch)
         
@@ -142,35 +92,3 @@ class BaseTrainer:
         padded_images_tensor = torch.stack(padded_images)
         labels = torch.stack(labels)
         return padded_images_tensor, labels
-
-    def split_data_train_test(self, data_path: str, split_by: str ='parking_lot'):
-        all_dataset = pd.read_csv(data_path)
-
-        unique_parking_lots = all_dataset['parking_lot_id'].unique()
-        cleaned_list = []
-
-        logger.info(f"Starting data cleaning with size {len(all_dataset)}")
-        for i, parking_lot in enumerate(unique_parking_lots):
-            data = all_dataset[all_dataset['parking_lot_id'] == parking_lot]
-            cleaned_list.append(clean_data(data['img_path'].to_list()))
-
-        cleaned_list = [elem for elem in cleaned_list[0]]
-        all_dataset = all_dataset[all_dataset['img_path'].isin(cleaned_list)]
-
-        logger.info(f"Data clening completed with size : {len(all_dataset)}")
-
-        if split_by == 'size':
-            logger.info("Splitting by size")
-            train_parking_lot, val_parking_lot = train_test_split(all_dataset, test_size=0.2, random_state=42)
-            logger.info(f"Training parking lots of size : {len(train_parking_lot)}")
-            logger.info(f"Validation parking lots of size : {len(val_parking_lot)}")
-        elif split_by == 'parking_lot':
-            logger.info("Splitting by parking lot id")
-            logger.info(f"Total number of parking lots found in the dataset: {len(unique_parking_lots)}")
-            train_parking_lot, val_parking_lot = train_test_split(all_dataset['parking_lot_id'].unique(),
-                                                                  test_size=0.2, random_state=42)
-            logger.info(f"Training parking lots of size : {len(train_parking_lot)}")
-            logger.info(f"Validation parking lots of size : {len(val_parking_lot)}")
-        else:
-            raise ValueError("Split by should be either size or parking_lot")
-        return train_parking_lot, val_parking_lot

@@ -96,12 +96,6 @@ class DataPreProcessing:
         '''
         returns the parking lots name and cluster name from the shapefile path
         '''
-        # file_name = Path(shapefile_path).stem
-        # parts = file_name.split('_')
-        # cluster_name = '_'.join(parts[:2])
-        # parking_lot_name = parts[2:]
-        # parking_lot_name = '_'.join(parking_lot_name)
-
         parking_lot_name = shapefile_path.stem
         cluster_name = shapefile_path.stem
         return parking_lot_name, cluster_name
@@ -255,11 +249,6 @@ class DataPreProcessing:
                 parking_lot_name = shapefile_path.stem
                 masked_images_parent_dir = Path(masked_images_root).joinpath(f"{parking_lot_name}")
                 cluster_name = parking_lot_name
-
-            #print(masked_images_parent_dir.exists())
-            #print(f"{masked_images_parent_dir}\**\{self.ANALYTIC_IMAGES_REGEX}")
-            #print(glob(f"{masked_images_parent_dir}\**\{self.ANALYTIC_IMAGES_REGEX}", recursive=True))
-            #len(list(masked_images_parent_dir.glob(self.ANALYTIC_IMAGES_REGEX))) == 0
             
             if not masked_images_parent_dir.exists() or len(list(masked_images_parent_dir.glob(f"**\{self.ANALYTIC_IMAGES_REGEX}"))) == 0:
                 logger.info(f"Skipping {cluster_name} - {parking_lot_name} as no images found")
@@ -280,7 +269,6 @@ class DataPreProcessing:
         if self.split_data:
             logger.info("Splitting data into train, test and validation")
             self.split_data_train_test_val(all_filtered_images_df, save_path)
-
     
 
 if __name__ == '__main__':

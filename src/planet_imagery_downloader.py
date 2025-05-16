@@ -159,8 +159,8 @@ class Planet_Image_Downloader_Block:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download planet asserts",
-                                     usage="python planet_imagery_downloader.py --config_path <path_to_config_file>")
+    parser = argparse.ArgumentParser(description="Download planet assets",
+                                     usage="python src/planet_imagery_downloader.py --config_path configs/downloader_config.yaml")
     
     parser.add_argument('--config_path', type=str, help='path to config file')
     args = parser.parse_args()
