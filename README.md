@@ -80,10 +80,19 @@ The evaluation application task is found in `notebooks\02_pairwise_ranking_appli
 
 #### 📖 Cite our paper:
 ```bibtex
-@article{aidoo2025weak,
-  title={A Weak Supervision Learning Approach Towards an Equitable Parking Lot Occupancy Estimation},
-  author={Aidoo, Theophilus and Koebe, Till and Maurya, Akansh and Shrestha, Hewan and Weber, Ingmar},
-  journal={arXiv preprint arXiv:2505.04229},
-  year={2025}
+@inproceedings{Aidoo_Koebe_Maurya_Shrestha_Weber_2025,
+  title       = {A Weak Supervision Learning Approach Towards an Equitable Mobility Estimation},
+  author      = {Aidoo, Theophilus and Koebe, Till and Maurya, Akansh and Shrestha, Hewan and Weber, Ingmar},
+  year        = {2025},
+  month       = {June},
+  booktitle   = {Proceedings of the Workshop on Data for the Wellbeing of Most Vulnerable, in Proceedings of the 19th International AAAI Conference on Web and Social Media (ICWSM)},
+  address     = {Copenhagen, Denmark},
+  pages       = {n/a},
+  doi         = {10.36190/2025.04},
+  url         = {https://workshop-proceedings.icwsm.org/abstract.php?id=2025_04},
+  publisher   = {Association for the Advancement of Artificial Intelligence},
+  note        = {Published June 5, 2025},
+  abstractnote= {The scarcity and high cost of labeled high‑resolution satellite imagery pose a major challenge to remote sensing applications, especially in low‑income regions, where such data are often inaccessible. In this study, we propose a weakly supervised learning approach to estimate parking lot occupancy using low‑cost, 3‑meter resolution satellite imagery. Using coarse temporal labels based on the cultural assumption that parking lots of major supermarkets and hardware stores in Germany are typically fuller on Saturdays and emptier on Sundays, we train a pairwise comparison model that achieves an AUC of 0.92 on large parking lots. To demonstrate real‑world applicability, we extended our method to monitor mobility patterns at a major bus terminal in Sudan, successfully capturing a drop in activity during the onset of armed conflict.}
 }
+
 ```
